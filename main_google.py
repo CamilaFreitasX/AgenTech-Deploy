@@ -189,11 +189,6 @@ class CSVAnalysisAgent:
     def query(self, question, agent_type="geral"):
         """Executa uma consulta usando o agente especificado"""
         try:
-            # Debug apenas no console, não na resposta
-            # print(f"\n=== DEBUG: Iniciando consulta ===")
-            # print(f"Pergunta: {question}")
-            # print(f"Dados disponíveis: {list(self.dataframes.keys())}")
-            
             if agent_type == "geral":
                 agent = self.create_general_agent()
                 if agent is None:
@@ -264,9 +259,6 @@ class CSVAnalysisAgent:
             - Mostrar código pandas executado
             - Mostrar top 5 fornecedores
             
-            IMPORTANTE: Sempre mostre o código pandas que você executou e os resultados da agregação!
-            """
-            
             INSTRUÇÕES CRÍTICAS:
             1. SEMPRE use pandas para análise: df.groupby(), df.sum(), df.max()
             2. Para encontrar maior valor: use df.groupby('fornecedor').sum().idxmax()
@@ -294,16 +286,15 @@ class CSVAnalysisAgent:
             print(f"Valor: R$ {maior_valor:,.2f}")
             ```
             
-            # print("Executando consulta...")  # Debug apenas no console
+            IMPORTANTE: Sempre mostre o código pandas que você executou e os resultados da agregação!
+            """
+            
             response = agent.invoke({"input": enhanced_question})
-            # print(f"Tipo da resposta: {type(response)}")  # Debug apenas no console
             
             if isinstance(response, dict):
                 result = response.get("output", response.get("result", ""))
             else:
                 result = str(response)
-            
-            # print(f"Resultado: {result[:200]}...")  # Debug apenas no console
             
             # Pós-processamento para garantir português e limpar debug
             if result and str(result).strip():
@@ -331,9 +322,8 @@ class CSVAnalysisAgent:
                 return "O agente não conseguiu processar a consulta. Verifique se os dados foram carregados corretamente."
                 
         except Exception as e:
-            # print(f"Erro geral: {str(e)}")  # Debug apenas no console
             return f"Erro ao processar consulta: {str(e)}"
-    
+
     def get_data_summary(self):
         """Retorna um resumo dos dados carregados"""
         summary = {}
