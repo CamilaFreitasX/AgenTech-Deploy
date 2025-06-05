@@ -40,8 +40,7 @@ class CSVAnalysisAgent:
         try:
             llm = ChatGoogleGenerativeAI(
                 model="gemini-1.5-flash",
-                google_api_key=self.google_api_key,
-                temperature=0.1,
+                temperature=0.3,  # Aumentar para mais flexibilidade
                 convert_system_message_to_human=True
             )
             return llm
@@ -116,18 +115,19 @@ class CSVAnalysisAgent:
             
             # SEMPRE tenta criar com TODOS os arquivos primeiro
             try:
+                # Linha ~120
                 general_agent = create_csv_agent(
                     llm,
-                    valid_paths,  # TODOS os arquivos
+                    valid_paths,
                     verbose=True,
                     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                     allow_dangerous_code=True,
                     handle_parsing_errors=True,
-                    max_iterations=10,
+                    max_iterations=20,  # Aumentar de 10 para 20
                     early_stopping_method="generate",
                     agent_executor_kwargs={
                         "handle_parsing_errors": True,
-                        "max_execution_time": 120
+                        "max_execution_time": 300  # Aumentar de 120 para 300 segundos
                     }
                 )
                 
@@ -205,30 +205,19 @@ class CSVAnalysisAgent:
             
             # Instrução MUITO específica para o agente - SEMPRE EM PORTUGUÊS
             enhanced_question = f"""
-            ATENÇÃO: RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO!
+            Você é um especialista em análise de dados financeiros.
+            Analise CUIDADOSAMENTE os dados antes de responder.
             
-            DADOS DISPONÍVEIS:
-            - Você tem acesso aos seguintes arquivos CSV: {', '.join(self.dataframes.keys())}
-            - Se usando pandas dataframes: df_0 = {list(self.dataframes.keys())[0] if self.dataframes else 'N/A'}, df_1 = {list(self.dataframes.keys())[1] if len(self.dataframes) > 1 else 'N/A'}
-            
-            INSTRUÇÕES OBRIGATÓRIAS:
-            1. RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO - NUNCA EM INGLÊS
-            2. Use vírgula como separador decimal (ex: 1.234,56)
-            3. Use formato brasileiro para valores monetários (ex: R$ 1.234,56)
-            4. VOCÊ PODE E DEVE executar código Python
-            5. Use pandas para analisar os dados
-            6. Se precisar de dados de itens, procure no dataframe 'itens' ou df_1
-            7. Se precisar de dados de cabeçalho, procure no dataframe 'cabecalho' ou df_0
-            8. Para calcular médias, somas, etc., use as funções pandas apropriadas
-            9. Forneça números específicos e detalhes na sua resposta
-            10. Se encontrar erros, explique o que aconteceu em português
-            11. NÃO inclua informações de debug na resposta final
-            12. Forneça apenas a resposta direta e clara
+            DADOS: {', '.join(self.dataframes.keys())}
             
             PERGUNTA: {question}
             
-            Execute o código Python necessário e forneça uma resposta precisa em português brasileiro com números específicos.
-            IMPORTANTE: Sua resposta deve ser limpa, sem informações técnicas ou de debug.
+            INSTRUÇÕES:
+            1. Execute código Python para analisar os dados
+            2. Verifique os resultados múltiplas vezes
+            3. Forneça números exatos e precisos
+            4. Responda em português brasileiro
+            5. Se houver dúvida, reanalise os dados
             """
             
             # print("Executando consulta...")  # Debug apenas no console
