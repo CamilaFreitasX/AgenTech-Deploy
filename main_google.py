@@ -15,14 +15,13 @@ except ImportError:
     try:
         from langchain.agents import create_pandas_dataframe_agent
     except ImportError:
-        # Se ainda não encontrar, pode ser um sinal de que a versão do langchain é muito antiga
-        # ou que o módulo específico não está instalado como esperado.
-        # Por enquanto, vamos permitir que falhe mais tarde se não for usado.
+        st.error("Não foi possível importar 'create_pandas_dataframe_agent'. Verifique a instalação do LangChain.")
+        # Permitir que o app continue se este agente específico não for crucial ou usado.
         pass
 
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents.agent_types import AgentType
+from langchain.agents.agent_types import AgentType # AgentType ainda é usado
 from utils_google import NotaFiscalValidator, extract_zip_file # Supondo que utils_google.py exista e funcione
 import warnings
 from dotenv import load_dotenv
@@ -34,24 +33,23 @@ class CSVAnalysisAgent:
     def __init__(self, google_api_key=None):
         """Inicializa o agente de análise CSV com Google Gemini"""
         self.google_api_key = google_api_key
-        self.agents = {}  # Armazena agentes para tipos de arquivo individuais (uso opcional)
-        self.dataframes = {}  # Armazena dataframes carregados {file_type: df}
-        self.file_info = {}  # Armazena informações sobre arquivos {file_type: {path, shape, columns}}
-        self.cabecalho_file_type_name = "cabecalho" # Nome padrão para o tipo de arquivo de cabeçalho da nota fiscal
+        self.agents = {} 
+        self.dataframes = {} 
+        self.file_info = {} 
+        self.cabecalho_file_type_name = "cabecalho" 
 
     def create_llm(self):
         """Cria uma instância do modelo Google Gemini"""
         if not self.google_api_key:
-            # Tenta pegar da variável de ambiente se não foi passada explicitamente
             self.google_api_key = os.getenv("GOOGLE_API_KEY")
             if not self.google_api_key:
                 raise ValueError("Google API Key é necessária para usar o agente e não foi encontrada.")
         
         try:
             llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash", # ou "gemini-pro" se preferir/tiver acesso
+                model="gemini-1.5-flash",
                 google_api_key=self.google_api_key,
-                temperature=0.5, # Mantido conforme original
+                temperature=0.5,
                 convert_system_message_to_human=True,
             )
             return llm
@@ -62,19 +60,18 @@ class CSVAnalysisAgent:
     def load_csv_data(self, file_path, file_type):
         """Carrega dados CSV."""
         try:
-            # Tenta diferentes encodings se utf-8 falhar
             try:
-                df = pd.read_csv(file_path, encoding='utf-8', sep=None, engine='python') # sep=None para autodetectar
+                df = pd.read_csv(file_path, encoding='utf-8', sep=None, engine='python', on_bad_lines='warn')
             except UnicodeDecodeError:
-                df = pd.read_csv(file_path, encoding='latin1', sep=None, engine='python')
-            except Exception as e_read: # Captura outros erros de leitura
-                st.error(f"Erro ao ler CSV {os.path.basename(file_path)} com encoding padrão: {e_read}. Tentando com delimitador ';'...")
+                df = pd.read_csv(file_path, encoding='latin1', sep=None, engine='python', on_bad_lines='warn')
+            except Exception as e_read: 
+                st.error(f"Erro ao ler CSV {os.path.basename(file_path)}: {e_read}. Tentando com delimitador ';'...")
                 try:
-                    df = pd.read_csv(file_path, encoding='utf-8', sep=';')
+                    df = pd.read_csv(file_path, encoding='utf-8', sep=';', on_bad_lines='warn')
                 except UnicodeDecodeError:
-                    df = pd.read_csv(file_path, encoding='latin1', sep=';')
+                    df = pd.read_csv(file_path, encoding='latin1', sep=';', on_bad_lines='warn')
                 except Exception as e_read_semi:
-                     st.error(f"Não foi possível ler o arquivo {os.path.basename(file_path)}: {e_read_semi}")
+                     st.error(f"Não foi possível ler o arquivo {os.path.basename(file_path)} mesmo com sep=';': {e_read_semi}")
                      return False
 
             self.dataframes[file_type] = df
@@ -86,7 +83,7 @@ class CSVAnalysisAgent:
             return True
             
         except Exception as e:
-            st.error(f"Erro ao carregar arquivo {file_type} ({os.path.basename(file_path)}): {str(e)}")
+            st.error(f"Erro geral ao carregar arquivo {file_type} ({os.path.basename(file_path)}): {str(e)}")
             return False
     
     def create_general_agent(self):
@@ -104,11 +101,8 @@ class CSVAnalysisAgent:
                 return None
             
             ordered_df_tuples = []
-            # Usar as chaves de self.dataframes garante a ordem de inserção (Python 3.7+)
-            # Isso é importante para a consistência de df_0, df_1, ...
             for file_type_key in self.dataframes.keys(): 
                 df_instance = self.dataframes.get(file_type_key)
-                # Validar se o dataframe é uma instância de pd.DataFrame
                 if isinstance(df_instance, pd.DataFrame):
                      ordered_df_tuples.append((file_type_key, df_instance))
                 else:
@@ -123,14 +117,13 @@ class CSVAnalysisAgent:
             list_of_df_names = [df_tuple[0] for df_tuple in ordered_df_tuples]
             
             cabecalho_df_index = -1
-            st.session_state.pop('cabecalho_df_variable_name', None) # Limpar antes de tentar definir
+            st.session_state.pop('cabecalho_df_variable_name', None) 
             try:
                 cabecalho_df_index = list_of_df_names.index(self.cabecalho_file_type_name)
                 st.session_state.cabecalho_df_variable_name = f"df_{cabecalho_df_index}"
                 print(f"Índice do DataFrame de cabeçalho ('{self.cabecalho_file_type_name}'): {cabecalho_df_index} (será {st.session_state.cabecalho_df_variable_name})")
             except ValueError:
                 print(f"Aviso: DataFrame do tipo '{self.cabecalho_file_type_name}' não encontrado na lista: {list_of_df_names}")
-
 
             # Estratégia Principal: create_pandas_dataframe_agent se houver DataFrames
             if list_of_dfs:
@@ -142,8 +135,8 @@ class CSVAnalysisAgent:
                         f"Você tem acesso a {len(list_of_dfs)} dataframes pandas nomeados df_0, df_1, ...:",
                     ]
                     for i, name in enumerate(list_of_df_names):
-                        cols = self.dataframes[name].columns.to_list() if isinstance(self.dataframes.get(name), pd.DataFrame) else "Colunas não disponíveis"
-                        prefix_parts.append(f"- df_{i}: (Tipo Original: '{name}'). Colunas: {cols}")
+                        cols_list = self.dataframes[name].columns.to_list() if isinstance(self.dataframes.get(name), pd.DataFrame) else ["Colunas não disponíveis"]
+                        prefix_parts.append(f"- df_{i}: (Tipo Original: '{name}'). Colunas: {cols_list}")
 
                     if cabecalho_df_index != -1:
                         prefix_parts.append(f"IMPORTANTE: O dataframe 'df_{cabecalho_df_index}' (tipo '{self.cabecalho_file_type_name}') é o principal para análise de totais por fornecedor, pois contém os cabeçalhos das notas fiscais. Use-o para essa finalidade.")
@@ -151,24 +144,20 @@ class CSVAnalysisAgent:
                         prefix_parts.append(f"IMPORTANTE: O dataframe do tipo '{self.cabecalho_file_type_name}' é o principal para análise de totais por fornecedor. Identifique qual df_X (df_0, df_1, etc.) corresponde a este tipo e use-o para essa finalidade.")
                     
                     prefix_message = "\n".join(prefix_parts)
-                    
-                    # create_pandas_dataframe_agent espera um único DF ou uma lista de DFs.
                     input_for_agent = list_of_dfs[0] if len(list_of_dfs) == 1 else list_of_dfs
 
                     general_agent = create_pandas_dataframe_agent(
                         llm,
                         input_for_agent, 
                         verbose=True,
-                        agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION, # Ou OPENAI_FUNCTIONS se preferir
+                        agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                         allow_dangerous_code=True,
-                        handle_parsing_errors=" агентом будет предпринята попытка исправить ошибку синтаксического анализа ", # String para robustez
                         prefix=prefix_message,
-                        max_iterations=15, 
+                        # Args do AgentExecutor passados diretamente:
+                        handle_parsing_errors=" агентом будет предпринята попытка исправить ошибку синтаксического анализа ",
+                        max_iterations=15,
                         early_stopping_method="generate",
-                        agent_executor_kwargs={
-                            "handle_parsing_errors": True, 
-                            "max_execution_time": 600 # Segundos
-                        }
+                        max_execution_time=600 
                     )
                     print(f"✅ Agente pandas criado com sucesso para {len(list_of_dfs)} dataframes.")
                     st.session_state.current_agent_type = "pandas_multi"
@@ -180,8 +169,9 @@ class CSVAnalysisAgent:
                     st.session_state.pop('cabecalho_df_variable_name', None) 
 
             # Fallback para create_csv_agent (usando caminhos)
-            valid_paths = [self.file_info.get(ft, {}).get('path') for ft in list_of_df_names 
-                           if self.file_info.get(ft, {}).get('path') and os.path.exists(self.file_info.get(ft, {}).get('path'))]
+            valid_paths = [self.file_info.get(ft, {}).get('path') for ft_name in list_of_df_names 
+                           if self.file_info.get(ft_name, {}).get('path') and os.path.exists(self.file_info.get(ft_name, {}).get('path'))]
+
 
             if not valid_paths:
                 st.error("Nenhum caminho de arquivo CSV válido encontrado para o agente de fallback.")
@@ -196,41 +186,38 @@ class CSVAnalysisAgent:
                     verbose=True,
                     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                     allow_dangerous_code=True,
-                    handle_parsing_errors=True,
-                    max_iterations=30, # Conforme original
+                    # Args do AgentExecutor passados diretamente:
+                    handle_parsing_errors=True, 
+                    max_iterations=30,
                     early_stopping_method="generate",
-                    agent_executor_kwargs={
-                        "handle_parsing_errors": True,
-                        "max_execution_time": 600
-                    }
+                    max_execution_time=600 
                 )
                 print(f"✅ Agente CSV (path-based) criado com sucesso para {len(valid_paths)} arquivos.")
                 st.session_state.current_agent_type = "csv_multi_path" if isinstance(agent_path_input, list) else "csv_single_path"
                 
-                # Se for um único arquivo CSV, verificar se é o de cabeçalho
                 if st.session_state.current_agent_type == "csv_single_path":
-                    first_file_type_path = None
-                    for f_type, info in self.file_info.items():
-                        if info['path'] == agent_path_input: # agent_path_input é string aqui
-                            first_file_type_path = f_type
+                    first_file_type_path_fallback = None # Renomeada para evitar conflito de escopo
+                    for f_type_fallback, info_fallback in self.file_info.items():
+                        if info_fallback['path'] == agent_path_input: 
+                            first_file_type_path_fallback = f_type_fallback
                             break
-                    if first_file_type_path == self.cabecalho_file_type_name:
-                        st.session_state.cabecalho_df_variable_name = "df" # Agente CSV único refere-se a ele como 'df'
+                    if first_file_type_path_fallback == self.cabecalho_file_type_name:
+                        st.session_state.cabecalho_df_variable_name = "df" 
                     else:
                         st.session_state.pop('cabecalho_df_variable_name', None)
                 return general_agent
             except Exception as e_csv:
                 print(f"❌ Erro ao criar agente CSV (path-based): {str(e_csv)}")
-                st.error(f"Falha crítica ao criar qualquer agente: {e_csv}")
+                st.error(f"Falha crítica ao criar qualquer tipo de agente: {e_csv}") 
                 return None
 
         except Exception as e_general:
-            print(f"❌ Erro geral ao criar agente: {str(e_general)}")
-            st.error(f"Erro geral ao criar agente de análise: {str(e_general)}")
+            print(f"❌ Erro geral não capturado anteriormente ao criar agente: {str(e_general)}")
+            st.error(f"Erro geral e fatal ao criar agente de análise: {str(e_general)}")
             return None
 
     def query(self, question):
-        """Executa uma consulta usando o agente geral (recriado a cada consulta para refletir dados atuais)."""
+        """Executa uma consulta usando o agente geral."""
         try:
             agent = self.create_general_agent() 
             if agent is None:
@@ -245,14 +232,13 @@ class CSVAnalysisAgent:
             if current_agent_context == "pandas_multi" and cabecalho_df_var_from_session:
                 target_df_variable_for_prompt = cabecalho_df_var_from_session
                 print(f"Query: Usando '{target_df_variable_for_prompt}' para código pandas (agente pandas_multi).")
-            elif current_agent_context in ["csv_single_path", "csv_single_fallback"] and cabecalho_df_var_from_session == "df":
+            elif current_agent_context in ["csv_single_path", "csv_single_fallback"] and cabecalho_df_var_from_session == "df": # "csv_single_fallback" foi removido antes
                 target_df_variable_for_prompt = "df"
                 print(f"Query: Usando 'df' para código pandas (agente CSV único sobre cabeçalho).")
             elif current_agent_context == "csv_multi_path":
                 print(f"Query: Agente csv_multi_path. O agente precisará identificar e carregar o CSV '{self.cabecalho_file_type_name}'.")
                 identified_cabecalho_type_for_prompt = f"o arquivo CSV correspondente a '{self.cabecalho_file_type_name}'"
-                # target_df_variable_for_prompt continua "df", agente deve carregar o cabecalho nele.
-            else: # Outros casos ou se cabecalho_df_variable_name não estiver definido
+            else: 
                  print(f"AVISO: Contexto do agente é '{current_agent_context}'. O nome da variável do dataframe de cabeçalho não foi determinado explicitamente para o prompt. O Agente precisará inferir qual dataframe usar para '{self.cabecalho_file_type_name}'.")
                  identified_cabecalho_type_for_prompt = f"o dataframe/arquivo correspondente a '{self.cabecalho_file_type_name}'"
 
@@ -271,23 +257,27 @@ import pandas as pd
 
 print(f"Iniciando análise no dataframe '{target_df_variable_for_prompt}' (espera-se que seja {identified_cabecalho_type_for_prompt}).")
 try:
-    # Validação crucial: O agente precisa garantir que '{target_df_variable_for_prompt}' realmente existe e é o dataframe correto.
-    # Esta é uma responsabilidade do agente se ele precisar carregar o CSV.
-    # Exemplo de como o agente poderia fazer isso (não faz parte do código a ser copiado literalmente, mas da lógica do agente):
-    # if not isinstance({target_df_variable_for_prompt}, pd.DataFrame):
-    #    path_cabecalho = find_path_for_file_type('{self.cabecalho_file_type_name}') # Lógica interna do agente
-    #    {target_df_variable_for_prompt} = pd.read_csv(path_cabecalho)
+    # Esta parte é crucial: o agente deve assegurar que '{target_df_variable_for_prompt}' é o dataframe correto.
+    # Se o agente precisar carregar um CSV, ele deve fazer isso aqui.
+    # Exemplo de lógica que o agente pode precisar executar internamente (não para copiar literalmente):
+    # if not isinstance({target_df_variable_for_prompt}, pd.DataFrame) and isinstance({target_df_variable_for_prompt}, str) and ".csv" in {target_df_variable_for_prompt}:
+    #     # Supondo que target_df_variable_for_prompt contém o caminho para o CSV de cabeçalho
+    #     actual_df_for_analysis = pd.read_csv({target_df_variable_for_prompt}) 
+    # else:
+    #     actual_df_for_analysis = {target_df_variable_for_prompt} # Já é um DataFrame
+
+    # Para o código abaixo, vamos assumir que 'actual_df_for_analysis' é o nome do dataframe que o agente usará.
+    # Por simplicidade no template, continuaremos usando '{target_df_variable_for_prompt}', mas o agente deve entender este mapeamento.
 
     print("Colunas disponíveis em '{target_df_variable_for_prompt}':", {target_df_variable_for_prompt}.columns.tolist())
     print("\\nPrimeiras 5 linhas de '{target_df_variable_for_prompt}':\\n", {target_df_variable_for_prompt}.head())
 
     if '{coluna_valor}' not in {target_df_variable_for_prompt}.columns:
-        raise ValueError("Coluna de valor '{coluna_valor}' NÃO ENCONTRADA no dataframe '{target_df_variable_for_prompt}'. Verifique o nome da coluna.")
+        raise ValueError("Coluna de valor '{coluna_valor}' NÃO ENCONTRADA no dataframe '{target_df_variable_for_prompt}'. Verifique o nome da coluna e o dataframe usado.")
     if '{coluna_fornecedor}' not in {target_df_variable_for_prompt}.columns:
-        raise ValueError("Coluna de fornecedor '{coluna_fornecedor}' NÃO ENCONTRADA no dataframe '{target_df_variable_for_prompt}'. Verifique o nome da coluna.")
+        raise ValueError("Coluna de fornecedor '{coluna_fornecedor}' NÃO ENCONTRADA no dataframe '{target_df_variable_for_prompt}'. Verifique o nome da coluna e o dataframe usado.")
 
-    # Garantir que a coluna de valor seja string antes de aplicar métodos str.str.replace
-    df_analysis = {target_df_variable_for_prompt}.copy() # Trabalhar com uma cópia para evitar SettingWithCopyWarning
+    df_analysis = {target_df_variable_for_prompt}.copy() 
     if df_analysis['{coluna_valor}'].dtype == 'object':
         df_analysis.loc[:, '{coluna_valor}'] = df_analysis['{coluna_valor}'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
     
@@ -309,23 +299,45 @@ try:
         maior_valor = resultado_ordenado.iloc[0]
         
         # Formatação para o padrão monetário brasileiro R$ xxx.xxx,xx
-        maior_valor_formatado = f"R$ {{maior_valor:_.2f}}".replace('.', '#').replace(',', '.').replace('#', ',')
-        # Se o resultado for, por exemplo, R$ 1,292,418.75 (locale US), queremos R$ 1.292.418,75
-        # A formatação :_.2f -> 1_292_418.75. replace . com , (1_292_418,75). replace _ com . (1.292.418,75)
-        # Ajuste manual se necessário:
-        # temp_val = f"{{maior_valor:,.2f}}" # Ex: 1,292,418.75
-        # maior_valor_formatado = "R$ " + temp_val.replace(",", "X").replace(".", ",").replace("X", ".")
+        # Usando separador de milhar '.' e decimal ','
+        maior_valor_formatado = f"R$ {{:_.2f}}".format(maior_valor).replace('.', '#TEMP#').replace(',', '.').replace('#TEMP#', ',').replace('_', '.')
+        # Correção: O de cima pode não funcionar bem com o _ para .
+        # Melhor: formatar para string, depois substituir.
+        # Ex: 1292418.75 -> "1.292.418,75"
+        s_valor = f"{{maior_valor:.2f}}" # "1292418.75"
+        partes = s_valor.split('.')
+        inteiro = partes[0]
+        decimal = partes[1] if len(partes) > 1 else "00"
+        inteiro_formatado = ""
+        if len(inteiro) > 3:
+            for i, digito in enumerate(reversed(inteiro)):
+                if i > 0 and i % 3 == 0:
+                    inteiro_formatado = "." + inteiro_formatado
+                inteiro_formatado = digito + inteiro_formatado
+        else:
+            inteiro_formatado = inteiro
+        maior_valor_formatado = f"R$ {{inteiro_formatado}},{{decimal}}"
 
 
         print(f"\\nFORNECEDOR COM MAIOR MONTANTE TOTAL CONSOLIDADO: {{maior_fornecedor}}")
         print(f"VALOR TOTAL CONSOLIDADO: {{maior_valor_formatado}}")
 
         print("\\nTOP 5 FORNECEDORES (VALORES TOTAIS CONSOLIDADOS):")
-        for i, (fornecedor, valor) in enumerate(resultado_ordenado.head().items()):
-            valor_fmt = f"R$ {{valor:_.2f}}".replace('.', '#').replace(',', '.').replace('#', ',')
-            # temp_item_val = f"{{valor:,.2f}}"
-            # valor_fmt = "R$ " + temp_item_val.replace(",", "X").replace(".", ",").replace("X", ".")
-            print(f"{{i+1}}. {{fornecedor}}: {{valor_fmt}}")
+        for i, (fornecedor_item, valor_item) in enumerate(resultado_ordenado.head().items()):
+            s_valor_item = f"{{valor_item:.2f}}"
+            partes_item = s_valor_item.split('.')
+            inteiro_item = partes_item[0]
+            decimal_item = partes_item[1] if len(partes_item) > 1 else "00"
+            inteiro_fmt_item = ""
+            if len(inteiro_item) > 3:
+                 for j, digito_item in enumerate(reversed(inteiro_item)):
+                    if j > 0 and j % 3 == 0:
+                        inteiro_fmt_item = "." + inteiro_fmt_item
+                    inteiro_fmt_item = digito_item + inteiro_fmt_item
+            else:
+                inteiro_fmt_item = inteiro_item
+            valor_fmt_item = f"R$ {{inteiro_fmt_item}},{{decimal_item}}"
+            print(f"{{i+1}}. {{fornecedor_item}}: {{valor_fmt_item}}")
     else:
         print("Não foi possível calcular os resultados. O dataframe agrupado está vazio (nenhum fornecedor encontrado ou todos os valores eram inválidos).")
         
@@ -338,7 +350,7 @@ except Exception as e_pandas_code:
             
             guidance_on_df_usage = (
                 f"Você DEVE USAR o dataframe '{target_df_variable_for_prompt}' (que o sistema identificou como correspondendo a {identified_cabecalho_type_for_prompt}) para esta análise, pois ele contém os cabeçalhos das notas fiscais."
-                if cabecalho_df_var_from_session or (current_agent_context in ["csv_single_path", "csv_single_fallback"] and identified_cabecalho_type_for_prompt == f"'{self.cabecalho_file_type_name}'")
+                if cabecalho_df_var_from_session or (current_agent_context in ["csv_single_path"] and identified_cabecalho_type_for_prompt == f"'{self.cabecalho_file_type_name}'") # csv_single_fallback removido
                 else f"Você deve priorizar o uso dos dados do arquivo/dataframe do tipo '{self.cabecalho_file_type_name}'. Se múltiplos dataframes (df_0, df_1, ...) ou arquivos CSV estiverem disponíveis, identifique qual deles corresponde a '{self.cabecalho_file_type_name}' (o prefixo do agente, se aplicável, já deu essa informação) e use-o para a análise de totais por fornecedor. O código pandas fornecido usa '{target_df_variable_for_prompt}' como placeholder para este dataframe de cabeçalho."
             )
 
@@ -386,7 +398,7 @@ FORMATO DA RESPOSTA FINAL (em português brasileiro):
 INSTRUÇÕES CRÍTICAS ADICIONAIS (RELEIA ANTES DE RESPONDER):
 1. FOCO ABSOLUTO NA AGREGAÇÃO: `groupby('{coluna_fornecedor}')['{coluna_valor}'].sum()`. É a chave.
 2. VALIDAÇÃO DE DADOS: SEMPRE verifique `df.info()`, `df.head()` do dataframe de cabeçalho. A conversão da coluna de valor é a etapa mais crítica antes da soma.
-3. FORMATAÇÃO MONETÁRIA BRASILEIRA: Apresente valores finais como R$ XX.XXX.XXX,XX (ponto como separador de milhar, vírgula para decimal). O código exemplo tenta fazer isso com `R$ {{valor:_.2f}}".replace('.', '#').replace(',', '.').replace('#', ',')`. Certifique-se que a saída esteja correta.
+3. FORMATAÇÃO MONETÁRIA BRASILEIRA: Apresente valores finais como R$ XX.XXX.XXX,XX (ponto como separador de milhar, vírgula para decimal). O código exemplo tenta fazer isso. Certifique-se que a saída esteja correta.
 4. RESPONDA EM PORTUGUÊS BRASILEIRO.
 5. NÃO INVENTE DADOS. Use apenas os dados dos arquivos fornecidos.
 6. SEJA EXPLÍCITO sobre qual arquivo/dataframe foi usado para a análise principal e como chegou ao resultado.
@@ -397,9 +409,8 @@ INSTRUÇÕES CRÍTICAS ADICIONAIS (RELEIA ANTES DE RESPONDER):
             
             result = ""
             if isinstance(response, dict):
-                # Tentar extrair de 'output', depois 'result', depois outros comuns
                 result = response.get("output", response.get("result", response.get("answer", "")))
-                if not result and response: # Se ainda vazio, pegar o primeiro valor do dict se for string
+                if not result and response: 
                     for val in response.values():
                         if isinstance(val, str):
                             result = val
@@ -409,12 +420,10 @@ INSTRUÇÕES CRÍTICAS ADICIONAIS (RELEIA ANTES DE RESPONDER):
             
             if result and result.strip():
                 result_str = result.strip()
-                # Limpeza mais agressiva de logs de pensamento do agente
                 lines = result_str.split('\n')
                 clean_lines = []
-                in_tool_code_block = False # Para não limpar código python útil
+                in_tool_code_block = False 
                 for line in lines:
-                    # Verificar se é uma linha de código python dentro de ```python ... ```
                     if line.strip().startswith("```python"):
                         in_tool_code_block = True
                         clean_lines.append(line)
@@ -424,43 +433,46 @@ INSTRUÇÕES CRÍTICAS ADICIONAIS (RELEIA ANTES DE RESPONDER):
                         clean_lines.append(line)
                         continue
                     
-                    if in_tool_code_block: # Manter linhas dentro do bloco de código
+                    if in_tool_code_block: 
                          clean_lines.append(line)
                          continue
 
-                    # Termos a serem removidos se não estiverem em bloco de código
                     debug_terms_to_remove = [
                         '> entering new agentexecutor chain', 
                         '> entering new llmchain object',
                         'invoking agent with', 'invoking llm', 
-                        'tool execution result',
-                        'thought:', 'action:', 'action input:', 'observation:', # Comuns em ReAct
-                        'final answer:', # O prompt já pede formato específico
-                        # Cuidado com "print(" se o agente mostrar código útil com print
+                        'tool execution result', 'action:', 'action input:', 'observation:',
                     ]
-                    # Remover apenas se a linha INTEIRA for um desses termos ou começar com eles de forma genérica
-                    # É melhor ser conservador para não remover partes da resposta real.
-                    # A lógica de limpeza pode ser complexa; o ideal é o agente responder de forma limpa.
-                    # Por agora, uma limpeza leve.
-                    temp_line = line.lower()
-                    should_remove = False
+                    temp_line_lower = line.lower()
+                    # Evitar remover linhas que contenham "thought:" mas são parte da resposta útil,
+                    # a menos que sejam apenas "Thought: ..." no início de uma linha de log.
+                    # A heurística aqui é se a linha *começa* com "thought:" (ignorando espaços)
+                    # e é provável que seja um log.
+                    is_log_line = False
+                    if temp_line_lower.lstrip().startswith("thought:"):
+                        is_log_line = True
+                    
                     for term in debug_terms_to_remove:
-                        if temp_line.startswith(term):
-                            should_remove = True
+                        if temp_line_lower.startswith(term):
+                            is_log_line = True
                             break
-                    if not should_remove:
-                         # Remover linhas que são apenas "Okay." ou "Got it."
-                        if temp_line.strip() not in ["okay.", "got it.", "sure."]:
-                            clean_lines.append(line)
+                    
+                    if not is_log_line:
+                        if temp_line_lower.strip() not in ["okay.", "got it.", "sure."]:
+                            # Remover "Final Answer:" se estiver no início da linha
+                            if line.lstrip().startswith("Final Answer:"):
+                                clean_lines.append(line.lstrip()[len("Final Answer:"):].lstrip())
+                            elif line.lstrip().startswith("FINAL ANSWER:"):
+                                clean_lines.append(line.lstrip()[len("FINAL ANSWER:"):].lstrip())
+                            else:
+                                clean_lines.append(line)
 
                 result_str = '\n'.join(clean_lines).strip()
 
-                # Garantir traduções se o LLM escorregar (o prompt é forte, mas por via das dúvidas)
                 result_str = result_str.replace('The supplier with the highest total consolidated amount is:', 'O fornecedor com o maior montante total consolidado é:')
                 result_str = result_str.replace('Total consolidated value:', 'Valor total consolidado:')
                 result_str = result_str.replace('Top 5 suppliers by total consolidated value:', 'Top 5 fornecedores por valor total consolidado:')
                 result_str = result_str.replace('Key Pandas Code Executed and Observations:', 'Código Pandas Chave Executado e Observações:')
-                result_str = result_str.replace('FINAL ANSWER:', '') # Remover se aparecer
 
                 return result_str
             else:
@@ -469,7 +481,7 @@ INSTRUÇÕES CRÍTICAS ADICIONAIS (RELEIA ANTES DE RESPONDER):
         except Exception as e:
             st.error(f"Erro crítico ao processar consulta na camada de query: {str(e)}")
             import traceback
-            traceback.print_exc() # Logar no console do servidor
+            traceback.print_exc() 
             return f"Erro crítico ao processar sua consulta: {str(e)}. Por favor, verifique os logs do console do servidor ou tente novamente."
 
     def get_data_summary(self):
@@ -501,15 +513,17 @@ def main():
     st.markdown("### Utilizando Google Gemini API & LangChain")
     st.markdown("---")
     
-    # GOOGLE_API_KEY é configurada no `create_llm` se não passada, lendo de .env
-    # Apenas garantir que o .env exista ou a chave seja configurada no ambiente
     if 'csv_agent_instance' not in st.session_state:
         try:
-            st.session_state.csv_agent_instance = CSVAnalysisAgent() # API key será lida em create_llm
-        except ValueError as e: # Captura erro se API key não for encontrada em create_llm
-            st.error(f"Erro de inicialização: {e}")
+            # A API Key será lida de .env dentro de create_llm se não fornecida aqui
+            st.session_state.csv_agent_instance = CSVAnalysisAgent() 
+        except ValueError as e: 
+            st.error(f"Erro de inicialização do agente: {e}")
             return
-    
+        except Exception as e_init: # Outras exceções na inicialização
+            st.error(f"Erro inesperado na inicialização do CSVAnalysisAgent: {e_init}")
+            return
+
     csv_analyzer = st.session_state.csv_agent_instance
 
     st.header("📁 1. Upload do Arquivo ZIP com CSVs")
@@ -526,37 +540,49 @@ def main():
             st.session_state.pop('cabecalho_df_variable_name', None) 
             st.session_state.pop('current_agent_type', None)
 
+            temp_dir_path = None # Para garantir que tem um valor
             try:
-                temp_dir = extract_zip_file(uploaded_file) 
+                # Assegurar que utils_google.py e suas funções estão disponíveis e corretas.
+                # Se extract_zip_file ou NotaFiscalValidator não estiverem definidos ou importados,
+                # o código falhará aqui.
+                if 'extract_zip_file' not in globals() or 'NotaFiscalValidator' not in globals():
+                     st.error("Funções utilitárias 'extract_zip_file' ou 'NotaFiscalValidator' não encontradas. Verifique 'utils_google.py'.")
+                     return # Parar execução se utilitários não estiverem lá
+
+                temp_dir_path = extract_zip_file(uploaded_file) 
+            except NameError as ne:
+                st.error(f"Erro de nome: {ne}. A função 'extract_zip_file' ou 'NotaFiscalValidator' não foi definida ou importada corretamente de 'utils_google.py'.")
+                return
             except Exception as e_zip:
                 st.error(f"Falha ao extrair o arquivo ZIP: {e_zip}")
-                temp_dir = None
+                temp_dir_path = None # Atribuição explícita em caso de falha
             
-            if temp_dir:
+            if temp_dir_path: # Procede apenas se temp_dir_path for um caminho válido
                 st.success(f"✅ Arquivo ZIP extraído com sucesso para o diretório temporário.")
                 
                 try:
                     validator = NotaFiscalValidator() 
                 except Exception as e_val_init:
                      st.error(f"Erro ao inicializar NotaFiscalValidator: {e_val_init}. Assegure-se que 'utils_google.py' está correto.")
-                     return
+                     return # Parar se o validador falhar
 
-                csv_files_found = [f for f in os.listdir(temp_dir) if f.lower().endswith('.csv')]
+                csv_files_found = [f for f in os.listdir(temp_dir_path) if f.lower().endswith('.csv')]
                 
                 if not csv_files_found:
                     st.warning("Nenhum arquivo CSV encontrado no ZIP.")
                 else:
                     loaded_files_summary = []
                     for csv_file_name in csv_files_found:
-                        file_full_path = os.path.join(temp_dir, csv_file_name)
+                        file_full_path = os.path.join(temp_dir_path, csv_file_name)
                         try:
                             file_type_identified = validator.identify_file_type(file_full_path) 
                         except Exception as e_ident:
                             st.warning(f"Erro ao identificar tipo do arquivo {csv_file_name} com NotaFiscalValidator: {e_ident}. Usando nome do arquivo como tipo.")
-                            file_type_identified = os.path.splitext(csv_file_name)[0].lower()
+                            file_type_identified = os.path.splitext(csv_file_name)[0].lower().replace(" ", "_")
 
-                        if file_type_identified == "unknown": # Validator pode retornar "unknown"
-                            file_type_identified = f"tipo_desconhecido_{os.path.splitext(csv_file_name)[0]}"
+
+                        if file_type_identified == "unknown": 
+                            file_type_identified = f"tipo_desconhecido_{os.path.splitext(csv_file_name)[0].replace(' ', '_')}"
 
                         success = csv_analyzer.load_csv_data(file_full_path, file_type_identified)
                         if success:
@@ -590,7 +616,9 @@ def main():
                                     st.dataframe(df_preview, use_container_width=True)
                     else:
                         st.error("Nenhum arquivo CSV pôde ser carregado do ZIP ou todos falharam.")
-            #uploaded_file = None # Resetar para permitir novo upload se necessário (Streamlit geralmente faz isso)
+            # Limpar uploaded_file para permitir novo upload do mesmo arquivo (se desejado)
+            st.session_state.uploaded_file_state = None 
+
 
     if hasattr(csv_analyzer, 'dataframes') and csv_analyzer.dataframes:
         st.header("🔍 2. Faça sua Pergunta ao Agente")
@@ -599,26 +627,28 @@ def main():
             st.markdown(f"""
             - Qual é o fornecedor que teve maior montante recebido (total consolidado)? (Pergunta principal)
             - Quais são os 5 fornecedores com maior valor total consolidado?
-            - Qual a soma total de 'VALOR NOTA FISCAL' no arquivo '{csv_analyzer.cabecalho_file_type_name}'?
+            - Qual a soma total de '{csv_analyzer.dataframes[csv_analyzer.cabecalho_file_type_name].columns[csv_analyzer.dataframes[csv_analyzer.cabecalho_file_type_name].columns.str.contains('VALOR', case=False)][0] if csv_analyzer.cabecalho_file_type_name in csv_analyzer.dataframes and any(csv_analyzer.dataframes[csv_analyzer.cabecalho_file_type_name].columns.str.contains('VALOR', case=False)) else 'VALOR NOTA FISCAL'}' no arquivo '{csv_analyzer.cabecalho_file_type_name}'?
             - Quantas notas fiscais (linhas) existem no arquivo '{csv_analyzer.cabecalho_file_type_name}'?
             - Descreva as colunas do arquivo '{csv_analyzer.cabecalho_file_type_name}'.
             """)
         
         default_question = "Qual é o fornecedor que teve maior montante recebido (total consolidado)?"
+        if 'user_question_input_memory' not in st.session_state:
+            st.session_state.user_question_input_memory = default_question
+
         user_question = st.text_area(
             "Sua pergunta:",
-            placeholder=default_question,
+            value=st.session_state.user_question_input_memory,
             height=100,
-            key="user_question_input",
-            value=st.session_state.get("user_question_input_memory", default_question) # Manter a última pergunta
+            key="user_question_input"
         )
-        st.session_state.user_question_input_memory = user_question # Salvar para a próxima vez
+        st.session_state.user_question_input_memory = user_question 
         
         if st.button("🚀 Executar Consulta", type="primary", key="run_query_button"):
             if not user_question.strip():
                 st.warning("⚠️ Por favor, digite uma pergunta.")
-            elif csv_analyzer.cabecalho_file_type_name not in csv_analyzer.dataframes:
-                 st.error(f"‼️ Não é possível executar a consulta principal. O arquivo/tipo de dados '{csv_analyzer.cabecalho_file_type_name}' não foi carregado. Faça o upload de um ZIP contendo-o.")
+            elif csv_analyzer.cabecalho_file_type_name not in csv_analyzer.dataframes and "total" in user_question.lower() and "fornecedor" in user_question.lower() : # Checagem mais específica
+                 st.error(f"‼️ Não é possível executar a consulta principal de totais por fornecedor. O arquivo/tipo de dados '{csv_analyzer.cabecalho_file_type_name}' não foi carregado. Faça o upload de um ZIP contendo-o.")
             else:
                 with st.spinner("🧠 O Agente Gemini está processando sua consulta... Por favor, aguarde."):
                     response_from_agent = csv_analyzer.query(user_question) 
@@ -631,9 +661,8 @@ def main():
                     else: 
                         st.error(f"Resposta inesperada do agente (tipo: {type(response_from_agent)}): {response_from_agent}")
                     
-                    # Para depuração, mostrar o tipo de agente usado
                     if st.session_state.get("current_agent_type"):
-                        st.caption(f"Debug: Agente usado: {st.session_state.current_agent_type}, Var. Cabeçalho no prompt: {st.session_state.get('cabecalho_df_variable_name', 'N/A')}")
+                        st.caption(f"Debug Info: Agente usado: {st.session_state.current_agent_type}, Var. Cabeçalho no prompt: {st.session_state.get('cabecalho_df_variable_name', 'N/A')}")
 
     else:
         st.info("Faça o upload de um arquivo ZIP na seção acima para começar a análise.")
@@ -655,23 +684,36 @@ def main():
     - [Documentação Streamlit](https://docs.streamlit.io/)
     """)
     st.sidebar.markdown("---")
-    st.sidebar.caption(f"Versão da Aplicação: 1.1.0")
+    st.sidebar.caption(f"Versão da Aplicação: 1.2.0 (Fix: Erro max_execution_time)")
 
 
 if __name__ == "__main__":
-    # Assegurar que utils_google.py exista ou fornecer implementações dummy se necessário para teste local
-    # Exemplo de utils_google.py dummy:
-    # class NotaFiscalValidator:
-    #     def identify_file_type(self, file_path):
-    #         if "cabecalho" in file_path.lower():
-    #             return "cabecalho"
-    #         if "itens" in file_path.lower():
-    #             return "itens"
-    #         return "unknown"
-    # def extract_zip_file(uploaded_file):
-    #     import tempfile, zipfile, os
-    #     temp_dir = tempfile.mkdtemp()
-    #     with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
-    #         zip_ref.extractall(temp_dir)
-    #     return temp_dir
+    # É crucial que o arquivo utils_google.py com as classes NotaFiscalValidator 
+    # e a função extract_zip_file esteja no mesmo diretório ou acessível no PYTHONPATH.
+    # Se precisar de um dummy para testar a interface do Streamlit sem a lógica completa:
+    # try:
+    #     from utils_google import NotaFiscalValidator, extract_zip_file
+    # except ImportError:
+    #     print("AVISO: utils_google.py não encontrado. Usando implementações dummy para NotaFiscalValidator e extract_zip_file.")
+    #     class NotaFiscalValidator:
+    #         def identify_file_type(self, file_path_str): # Renomear para evitar conflito
+    #             if "cabecalho" in str(file_path_str).lower(): return "cabecalho"
+    #             if "itens" in str(file_path_str).lower(): return "itens"
+    #             return "unknown"
+    #     def extract_zip_file(uploaded_file_obj): # Renomear para evitar conflito
+    #         import tempfile, zipfile, os
+    #         temp_dir_obj = tempfile.mkdtemp() # Renomear para evitar conflito
+    #         try:
+    #             with zipfile.ZipFile(uploaded_file_obj, 'r') as zip_ref:
+    #                 zip_ref.extractall(temp_dir_obj)
+    #             return temp_dir_obj
+    #         except Exception as e_dummy_zip:
+    #             print(f"Erro no dummy extract_zip_file: {e_dummy_zip}")
+    #             # Criar um diretório vazio para evitar que o resto falhe se o zip for inválido no teste
+    #             if not os.path.exists(temp_dir_obj): os.makedirs(temp_dir_obj)
+    #             return temp_dir_obj
+    #     # Atribuir globalmente para que o main() as encontre
+    #     globals()['NotaFiscalValidator'] = NotaFiscalValidator
+    #     globals()['extract_zip_file'] = extract_zip_file
+
     main()
