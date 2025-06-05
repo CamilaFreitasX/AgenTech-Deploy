@@ -210,15 +210,23 @@ class CSVAnalysisAgent:
             DADOS DISPONÍVEIS: {', '.join(self.dataframes.keys())}
             PERGUNTA: {question}
             
+            ⚠️ ATENÇÃO CRÍTICA: NÃO olhe valores individuais de notas fiscais!
+            VOCÊ DEVE SEMPRE AGRUPAR E SOMAR todos os valores por fornecedor!
+            
             METODOLOGIA OBRIGATÓRIA (baseada no ChatGPT):
             1. Carregue o arquivo de cabeçalho das notas fiscais
             2. Converta a coluna 'VALOR NOTA FISCAL' para float
             3. Agrupe por 'RAZÃO SOCIAL EMITENTE' (nome do fornecedor)
-            4. Some os valores para obter total por fornecedor
+            4. Some TODOS os valores para obter total CONSOLIDADO por fornecedor
             5. Ordene de forma descendente
-            6. Identifique o fornecedor com maior valor
+            6. Identifique o fornecedor com maior valor TOTAL (não individual)
             
-            CÓDIGO PANDAS OBRIGATÓRIO:
+            ⚠️ EXEMPLO DO ERRO A EVITAR:
+            - ERRADO: Pegar R$ 6.712,16 de uma nota isolada da EDITORA FTD S.A.
+            - CORRETO: Somar TODAS as notas da EDITORA FTD S.A. = R$ 292.486,11
+            - RESULTADO: CHEMYUNION LTDA com R$ 1.292.418,75 é o maior montante
+            
+            CÓDIGO PANDAS OBRIGATÓRIO - EXECUTE EXATAMENTE ASSIM:
             ```python
             import pandas as pd
             
@@ -231,33 +239,32 @@ class CSVAnalysisAgent:
             # 2. Converter coluna de valor para numérico
             df['VALOR NOTA FISCAL'] = pd.to_numeric(df['VALOR NOTA FISCAL'], errors='coerce')
             
-            # 3. Agrupar por fornecedor e somar valores
+            # 3. CRÍTICO: Agrupar por fornecedor e somar TODOS os valores
             resultado = df.groupby('RAZÃO SOCIAL EMITENTE')['VALOR NOTA FISCAL'].sum()
             
             # 4. Ordenar de forma descendente
             resultado_ordenado = resultado.sort_values(ascending=False)
             
-            # 5. Obter o maior
+            # 5. Obter o maior TOTAL (não individual)
             maior_fornecedor = resultado_ordenado.index[0]
             maior_valor = resultado_ordenado.iloc[0]
             
-            print(f"\nFornecedor com maior montante: {maior_fornecedor}")
-            print(f"Valor total: R$ {maior_valor:,.2f}")
+            print(f"\nFornecedor com maior montante TOTAL: {maior_fornecedor}")
+            print(f"Valor total CONSOLIDADO: R$ {maior_valor:,.2f}")
             
             # 6. Mostrar top 5 para verificação
-            print("\nTop 5 fornecedores:")
+            print("\nTop 5 fornecedores (valores TOTAIS):")
             for i, (fornecedor, valor) in enumerate(resultado_ordenado.head().items()):
                 print(f"{i+1}. {fornecedor}: R$ {valor:,.2f}")
             ```
             
-            INSTRUÇÕES CRÍTICAS:
-            - Use EXATAMENTE os nomes das colunas: 'VALOR NOTA FISCAL' e 'RAZÃO SOCIAL EMITENTE'
-            - SEMPRE converta valores para numérico antes de somar
-            - SEMPRE mostre o código executado
-            - SEMPRE responda em português brasileiro
-            - Use vírgula como separador decimal (R$ 1.234,56)
-            - NUNCA invente dados - use apenas o que está nos arquivos
-            - Se der erro, verifique os nomes das colunas com df.columns
+            RESPOSTA ESPERADA:
+            - Maior fornecedor: CHEMYUNION LTDA
+            - Valor: R$ 1.292.418,75
+            - Mostrar código pandas executado
+            - Mostrar top 5 fornecedores
+            
+            IMPORTANTE: Sempre mostre o código pandas que você executou e os resultados da agregação!
             """
             
             INSTRUÇÕES CRÍTICAS:
