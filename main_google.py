@@ -205,20 +205,37 @@ class CSVAnalysisAgent:
             
             # Instrução MUITO específica para o agente - SEMPRE EM PORTUGUÊS
             enhanced_question = f"""
-            Você é um especialista em análise de dados financeiros.
-            Analise CUIDADOSAMENTE os dados antes de responder.
+            Você é um especialista em análise de dados financeiros de notas fiscais.
             
-            DADOS: {', '.join(self.dataframes.keys())}
-            
+            DADOS DISPONÍVEIS: {', '.join(self.dataframes.keys())}
             PERGUNTA: {question}
             
-            INSTRUÇÕES:
-            1. Execute código Python para analisar os dados
-            2. Verifique os resultados múltiplas vezes
-            3. Forneça números exatos e precisos
-            4. Responda em português brasileiro
-            5. Se houver dúvida, reanalise os dados
-            """
+            INSTRUÇÕES CRÍTICAS:
+            1. SEMPRE use pandas para análise: df.groupby(), df.sum(), df.max()
+            2. Para encontrar maior valor: use df.groupby('fornecedor').sum().idxmax()
+            3. SEMPRE verifique os dados com df.head(), df.info(), df.describe()
+            4. Para valores monetários: use format(valor, ',.2f').replace(',', 'X').replace('.', ',').replace('X', '.')
+            5. SEMPRE responda em português brasileiro
+            6. Use dados do arquivo 'cabecalho' para totais por fornecedor
+            7. NUNCA invente dados - apenas use o que está nos arquivos
+            8. Mostre o código pandas executado
+            9. Verifique múltiplas vezes os cálculos
+            10. Se houver dúvida, reanalise os dados
+            
+            EXEMPLO DE CÓDIGO OBRIGATÓRIO:
+            ```python
+            # Verificar dados
+            print(df_cabecalho.columns)
+            print(df_cabecalho.head())
+            
+            # Agrupar por fornecedor e somar valores
+            resultado = df_cabecalho.groupby('nome_fornecedor')['valor_total'].sum()
+            maior_fornecedor = resultado.idxmax()
+            maior_valor = resultado.max()
+            
+            print(f"Fornecedor: {maior_fornecedor}")
+            print(f"Valor: R$ {maior_valor:,.2f}")
+            ```
             
             # print("Executando consulta...")  # Debug apenas no console
             response = agent.invoke({"input": enhanced_question})
@@ -427,3 +444,29 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # 🚨 Problema Confirmado: Aplicação Ainda Dá Respostas Incorretas
+    
+    # Vejo que mesmo após as tentativas de melhorias, a aplicação ainda está fornecendo dados incorretos:
+    
+    # - **Resposta da Aplicação:** EDITORA FTD S.A. com R$ 6.712,16
+    # - **Resposta Correta:** CHEMYUNION LTDA com R$ 1.292.418,75
+    
+    # Isso indica que as mudanças ainda não foram aplicadas ou não são suficientes.
+    
+    # 🔧 Solução Definitiva: Aplicar Mudanças Mais Robustas
+    
+    # Vamos implementar melhorias mais específicas no código:
+    
+    # ### **1. Verificar se as Mudanças Foram Aplicadas**
+    
+    # Primeiro, confirme se o arquivo local tem essas configurações:
+    
+    # Linha ~43 - Temperature
+    temperature=0.5,  # AUMENTAR AINDA MAIS para 0.5
+    
+    # Linha ~126 - Max Iterations  
+    max_iterations=30,  # AUMENTAR para 30
+    
+    # Linha ~130 - Max Execution Time
+    "max_execution_time": 600  # AUMENTAR para 600 segundos
