@@ -210,6 +210,56 @@ class CSVAnalysisAgent:
             DADOS DISPONÍVEIS: {', '.join(self.dataframes.keys())}
             PERGUNTA: {question}
             
+            METODOLOGIA OBRIGATÓRIA (baseada no ChatGPT):
+            1. Carregue o arquivo de cabeçalho das notas fiscais
+            2. Converta a coluna 'VALOR NOTA FISCAL' para float
+            3. Agrupe por 'RAZÃO SOCIAL EMITENTE' (nome do fornecedor)
+            4. Some os valores para obter total por fornecedor
+            5. Ordene de forma descendente
+            6. Identifique o fornecedor com maior valor
+            
+            CÓDIGO PANDAS OBRIGATÓRIO:
+            ```python
+            import pandas as pd
+            
+            # 1. Verificar estrutura dos dados
+            print("Colunas disponíveis:")
+            print(df.columns.tolist())
+            print("\nPrimeiras linhas:")
+            print(df.head())
+            
+            # 2. Converter coluna de valor para numérico
+            df['VALOR NOTA FISCAL'] = pd.to_numeric(df['VALOR NOTA FISCAL'], errors='coerce')
+            
+            # 3. Agrupar por fornecedor e somar valores
+            resultado = df.groupby('RAZÃO SOCIAL EMITENTE')['VALOR NOTA FISCAL'].sum()
+            
+            # 4. Ordenar de forma descendente
+            resultado_ordenado = resultado.sort_values(ascending=False)
+            
+            # 5. Obter o maior
+            maior_fornecedor = resultado_ordenado.index[0]
+            maior_valor = resultado_ordenado.iloc[0]
+            
+            print(f"\nFornecedor com maior montante: {maior_fornecedor}")
+            print(f"Valor total: R$ {maior_valor:,.2f}")
+            
+            # 6. Mostrar top 5 para verificação
+            print("\nTop 5 fornecedores:")
+            for i, (fornecedor, valor) in enumerate(resultado_ordenado.head().items()):
+                print(f"{i+1}. {fornecedor}: R$ {valor:,.2f}")
+            ```
+            
+            INSTRUÇÕES CRÍTICAS:
+            - Use EXATAMENTE os nomes das colunas: 'VALOR NOTA FISCAL' e 'RAZÃO SOCIAL EMITENTE'
+            - SEMPRE converta valores para numérico antes de somar
+            - SEMPRE mostre o código executado
+            - SEMPRE responda em português brasileiro
+            - Use vírgula como separador decimal (R$ 1.234,56)
+            - NUNCA invente dados - use apenas o que está nos arquivos
+            - Se der erro, verifique os nomes das colunas com df.columns
+            """
+            
             INSTRUÇÕES CRÍTICAS:
             1. SEMPRE use pandas para análise: df.groupby(), df.sum(), df.max()
             2. Para encontrar maior valor: use df.groupby('fornecedor').sum().idxmax()
