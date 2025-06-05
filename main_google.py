@@ -19,9 +19,6 @@ import warnings
 from dotenv import load_dotenv
 
 load_dotenv()
-
-import streamlit as st
-import warnings
 warnings.filterwarnings("ignore")
 
 class CSVAnalysisAgent:
@@ -40,7 +37,7 @@ class CSVAnalysisAgent:
         try:
             llm = ChatGoogleGenerativeAI(
                 model="gemini-1.5-flash",
-                temperature=0.3,  # Aumentar para mais flexibilidade
+                temperature=0.5,  # CORRIGIDO: Aumentado para 0.5
                 convert_system_message_to_human=True
             )
             return llm
@@ -51,10 +48,8 @@ class CSVAnalysisAgent:
     def load_csv_data(self, file_path, file_type):
         """Carrega dados CSV e cria agente específico"""
         try:
-            # Lê o arquivo CSV
             df = pd.read_csv(file_path, encoding='utf-8')
             
-            # Armazena o dataframe
             self.dataframes[file_type] = df
             self.file_info[file_type] = {
                 'path': file_path,
@@ -62,12 +57,10 @@ class CSVAnalysisAgent:
                 'columns': df.columns.tolist()
             }
             
-            # Cria o LLM
             llm = self.create_llm()
             if llm is None:
                 return False
             
-            # Cria agente específico para este CSV
             agent = create_csv_agent(
                 llm,
                 file_path,
@@ -96,10 +89,8 @@ class CSVAnalysisAgent:
                 print("Erro: Não foi possível criar LLM")
                 return None
             
-            # Coleta TODOS os caminhos de arquivos válidos usando file_info
             valid_paths = []
             for file_type, df in self.dataframes.items():
-                # CORREÇÃO: usar self.file_info ao invés de getattr
                 file_path = self.file_info.get(file_type, {}).get('path')
                 if file_path and os.path.exists(file_path):
                     valid_paths.append(file_path)
@@ -113,9 +104,7 @@ class CSVAnalysisAgent:
             
             print(f"Criando agente com {len(valid_paths)} arquivos: {valid_paths}")
             
-            # SEMPRE tenta criar com TODOS os arquivos primeiro
             try:
-                # Linha ~120
                 general_agent = create_csv_agent(
                     llm,
                     valid_paths,
@@ -123,11 +112,11 @@ class CSVAnalysisAgent:
                     agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                     allow_dangerous_code=True,
                     handle_parsing_errors=True,
-                    max_iterations=20,  # Aumentar de 10 para 20
+                    max_iterations=30,  # CORRIGIDO: Aumentado para 30
                     early_stopping_method="generate",
                     agent_executor_kwargs={
                         "handle_parsing_errors": True,
-                        "max_execution_time": 300  # Aumentar de 120 para 300 segundos
+                        "max_execution_time": 600  # CORRIGIDO: Aumentado para 600 segundos
                     }
                 )
                 
@@ -137,14 +126,12 @@ class CSVAnalysisAgent:
             except Exception as e:
                 print(f"❌ Erro ao criar agente com múltiplos arquivos: {str(e)}")
                 
-                # Se falhar com múltiplos arquivos, tenta abordagem pandas
                 if len(valid_paths) > 1:
                     try:
                         print("🔄 Tentando abordagem pandas com todos os dataframes...")
                         
                         from langchain.agents import create_pandas_dataframe_agent
                         
-                        # Converte todos os dataframes em uma lista
                         all_dfs = list(self.dataframes.values())
                         df_names = list(self.dataframes.keys())
                         
@@ -164,7 +151,6 @@ class CSVAnalysisAgent:
                     except Exception as e2:
                         print(f"❌ Erro na abordagem pandas: {str(e2)}")
                     
-                # Último recurso: apenas um arquivo
                 try:
                     print(f"⚠️ Fallback: criando agente apenas para {valid_paths[0]}")
                     general_agent = create_csv_agent(
@@ -198,7 +184,6 @@ class CSVAnalysisAgent:
                 if agent is None:
                     return f"Erro: Agente para {agent_type} não encontrado."
             
-            # Instrução MUITO específica para o agente - SEMPRE EM PORTUGUÊS
             enhanced_question = f"""
             Você é um especialista em análise de dados financeiros de notas fiscais.
             
@@ -271,21 +256,6 @@ class CSVAnalysisAgent:
             9. Verifique múltiplas vezes os cálculos
             10. Se houver dúvida, reanalise os dados
             
-            EXEMPLO DE CÓDIGO OBRIGATÓRIO:
-            ```python
-            # Verificar dados
-            print(df_cabecalho.columns)
-            print(df_cabecalho.head())
-            
-            # Agrupar por fornecedor e somar valores
-            resultado = df_cabecalho.groupby('nome_fornecedor')['valor_total'].sum()
-            maior_fornecedor = resultado.idxmax()
-            maior_valor = resultado.max()
-            
-            print(f"Fornecedor: {maior_fornecedor}")
-            print(f"Valor: R$ {maior_valor:,.2f}")
-            ```
-            
             IMPORTANTE: Sempre mostre o código pandas que você executou e os resultados da agregação!
             """
             
@@ -296,22 +266,18 @@ class CSVAnalysisAgent:
             else:
                 result = str(response)
             
-            # Pós-processamento para garantir português e limpar debug
             if result and str(result).strip():
                 result_str = str(result).strip()
                 
-                # Remove linhas de debug que possam ter vazado
                 lines = result_str.split('\n')
                 clean_lines = []
                 for line in lines:
-                    # Remove linhas que contêm informações de debug
                     if not any(debug_term in line.lower() for debug_term in 
                              ['debug:', 'tipo da resposta', 'executando', '===', 'print(']):
                         clean_lines.append(line)
                 
                 result_str = '\n'.join(clean_lines).strip()
                 
-                # Se a resposta ainda estiver em inglês, força tradução básica
                 if any(word in result_str.lower() for word in ['the supplier', 'with the highest', 'total received', 'final answer']):
                     result_str = result_str.replace('The supplier with the highest total received value is:', 'O fornecedor com o maior valor total recebido é:')
                     result_str = result_str.replace('Final Answer:', 'Resposta Final:')
@@ -348,18 +314,15 @@ def main():
     st.markdown("### Powered by Google Gemini API & LangChain")
     st.markdown("---")
     
-    # Carrega a API key do arquivo .env
     google_api_key = os.getenv("GOOGLE_API_KEY")
     
     if not google_api_key:
         st.error("⚠️ GOOGLE_API_KEY não encontrada no arquivo .env")
         return
     
-    # Inicializa o agente
     if 'csv_agent' not in st.session_state:
         st.session_state.csv_agent = CSVAnalysisAgent(google_api_key)
     
-    # Upload de arquivos
     st.header("📁 Upload de Arquivos")
     uploaded_file = st.file_uploader(
         "Faça upload do arquivo ZIP contendo os CSVs de notas fiscais",
@@ -369,13 +332,11 @@ def main():
     
     if uploaded_file is not None:
         with st.spinner("Processando arquivos..."):
-            # Extrai o arquivo ZIP
             temp_dir = extract_zip_file(uploaded_file)
             
             if temp_dir:
                 st.success("✅ Arquivo ZIP extraído com sucesso!")
                 
-                # Processa os arquivos CSV
                 validator = NotaFiscalValidator()
                 csv_files = [f for f in os.listdir(temp_dir) if f.endswith('.csv')]
                 
@@ -392,7 +353,6 @@ def main():
                 if loaded_files:
                     st.success(f"✅ Arquivos carregados: {', '.join(loaded_files)}")
                     
-                    # Mostra resumo dos dados
                     with st.expander("📊 Resumo dos Dados Carregados"):
                         summary = st.session_state.csv_agent.get_data_summary()
                         for file_type, info in summary.items():
@@ -405,16 +365,13 @@ def main():
                                 st.write("**Colunas:**")
                                 st.write(", ".join(info['colunas_lista']))
                             
-                            # Mostra primeiras linhas
                             if st.checkbox(f"Ver primeiras linhas - {file_type}", key=f"show_{file_type}"):
                                 df_display = pd.DataFrame(info['primeiras_linhas'])
                                 st.dataframe(df_display, use_container_width=True)
     
-    # Interface de consultas
     if hasattr(st.session_state, 'csv_agent') and st.session_state.csv_agent.dataframes:
         st.header("🔍 Faça suas perguntas")
         
-        # Exemplos de perguntas
         with st.expander("💡 Exemplos de Perguntas"):
             st.markdown("""
             - Qual é o fornecedor que teve maior montante recebido?
@@ -429,7 +386,6 @@ def main():
             - Qual é a distribuição de valores por fornecedor?
             """)
         
-        # Campo de pergunta
         user_question = st.text_area(
             "Digite sua pergunta sobre os dados:",
             placeholder="Ex: Qual é o fornecedor que teve maior montante recebido?",
@@ -441,20 +397,15 @@ def main():
                 with st.spinner("Processando consulta..."):
                     response = st.session_state.csv_agent.query(user_question)
                     
-                    # Exibe apenas a resposta limpa
                     st.markdown("### 📋 Resposta:")
                     
-                    # Cria um expander para detalhes técnicos (opcional)
                     with st.expander("🔧 Detalhes Técnicos (clique para ver)", expanded=False):
                         st.write("Tipo da resposta:", type(response))
                         st.write("Conteúdo bruto:", response)
                     
-                    # Exibe a resposta principal de forma limpa
                     if response and str(response).strip():
-                        # Remove possíveis prefixos de debug
                         clean_response = str(response).strip()
                         
-                        # Remove linhas que começam com "Tipo da resposta" ou similar
                         lines = clean_response.split('\n')
                         clean_lines = []
                         for line in lines:
@@ -463,15 +414,12 @@ def main():
                                 clean_lines.append(line)
                         
                         final_response = '\n'.join(clean_lines).strip()
-                        
-                        # Exibe a resposta final
                         st.markdown(final_response)
                     else:
                         st.error("Não foi possível obter uma resposta válida.")
             else:
                 st.warning("⚠️ Por favor, digite uma pergunta.")
     
-    # Informações adicionais
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📚 Sobre")
     st.sidebar.markdown("""
