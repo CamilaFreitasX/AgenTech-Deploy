@@ -458,10 +458,6 @@ if __name__ == "__main__":
     # Primeiro, confirme se o arquivo local tem essas configurações:
     
     # Linha ~43 - Temperature
-    temperature=0.5,  # AUMENTAR AINDA MAIS para 0.5
-    
-    # Linha ~126 - Max Iterations  
-    max_iterations=30,  # AUMENTAR para 30
-    
-    # Linha ~130 - Max Execution Time
-    "max_execution_time": 600  # AUMENTAR para 600 segundos
+    if __name__ == "__main__":
+        main()
+        
